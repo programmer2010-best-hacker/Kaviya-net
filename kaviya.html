@@ -1,0 +1,97 @@
+// App.jsx (Simplified Facebook-style version)
+import React, { useEffect, useState } from 'react';
+import { db, loginWithEmail, registerWithEmail, storage } from './firebaseConfig';
+import { collection, addDoc, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+
+export default function App() {
+  const [posts, setPosts] = useState([]);
+  const [postText, setPostText] = useState('');
+  const [image, setImage] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    loadPosts();
+  }, []);
+
+  const loadPosts = async () => {
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    setPosts(snap.docs.map(doc => doc.data()));
+  };
+
+  const handlePost = async () => {
+    if (!postText && !image) return;
+    let imageUrl = '';
+    if (image) {
+      const refImg = ref(storage, `images/${Date.now()}-${image.name}`);
+      await uploadBytes(refImg, image);
+      imageUrl = await getDownloadURL(refImg);
+    }
+    await addDoc(collection(db, 'posts'), {
+      text: postText,
+      image: imageUrl,
+      createdAt: Timestamp.now(),
+      author: user?.email || 'Anonymous'
+    });
+    setPostText('');
+    setImage(null);
+    loadPosts();
+  };
+
+  const handleLogin = async () => {
+    try {
+      const res = await loginWithEmail(email, password);
+      setUser(res.user);
+    } catch (err) {
+      alert('Login failed');
+    }
+  };
+
+  const handleRegister = async () => {
+    try {
+      const res = await registerWithEmail(email, password);
+      setUser(res.user);
+    } catch (err) {
+      alert('Register failed');
+    }
+  };
+
+  return (
+    <div className="p-4 max-w-4xl mx-auto">
+      <header className="flex flex-col md:flex-row gap-2 items-center justify-between p-4 bg-blue-100 rounded-xl">
+        <h1 className="text-2xl font-bold text-blue-700">KAVIYA NET</h1>
+        {!user ? (
+          <div className="flex gap-2">
+            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
+            <Input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password" />
+            <Button onClick={handleLogin}>Login</Button>
+            <Button variant="outline" onClick={handleRegister}>Register</Button>
+          </div>
+        ) : <p>Welcome, {user.email}</p>}
+      </header>
+
+      {user && (
+        <div className="my-4 flex flex-col md:flex-row gap-2">
+          <Input value={postText} onChange={e => setPostText(e.target.value)} placeholder="What's on your mind?" />
+          <Input type="file" onChange={e => setImage(e.target.files[0])} />
+          <Button onClick={handlePost}>Post</Button>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {posts.map((post, i) => (
+          <div key={i} className="p-4 bg-white rounded-xl shadow">
+            <p className="font-bold text-blue-700">{post.author}</p>
+            {post.image && <img src={post.image} alt="" className="my-2 rounded" />}
+            <p>{post.text}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
